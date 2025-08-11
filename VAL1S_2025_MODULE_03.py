@@ -281,17 +281,31 @@ def write_actions_csv(path: Path, rows: List[Dict[str, Any]]):
 if __name__ == "__main__":
     import argparse
     import time
+    import sys
 
-    parser = argparse.ArgumentParser(description="VAL1S Module 03: Normalize to FFV1/MKV (video), PCM 96k/24 WAV (audio), TIFF (images)")
+    parser = argparse.ArgumentParser(
+        description="VAL1S Module 03: Normalize (video→FFV1/MKV, audio→PCM 96k/24 WAV, images→TIFF)"
+    )
+    # Inputs
     parser.add_argument("--from-csv", type=Path, help="Read inputs from Module 02 CSV (preferred)")
     parser.add_argument("--input-root", type=Path, help="Directory to scan if --from-csv not provided")
+
+    # Outputs/exec
     parser.add_argument("--out-root", type=Path, default=Path.cwd() / f"VAL1S_03_output_{RUN_TS}",
                         help="Root directory for normalized outputs")
-    parser.add_argument("--execute", action="store_true", help="Run ffmpeg; otherwise write a plan only")
     parser.add_argument("--jobs", type=int, default=2, help="Parallel jobs for execution (default: 2)")
     parser.add_argument("--force", action="store_true", help="Overwrite existing outputs")
+
+    # Behavior
+    parser.add_argument("--execute", action="store_true",
+                        help="(Legacy) execute immediately without prompt (kept for compatibility)")
+    parser.add_argument("--plan-only", action="store_true",
+                        help="Only write the plan CSV and exit")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="Auto-confirm execution after planning (no prompt)")
     parser.add_argument("--follow-symlinks", action="store_true", help="Follow symlinks during walk")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase verbosity (-v, -vv)")
+
     args = parser.parse_args()
 
     # Logging level
@@ -314,7 +328,6 @@ if __name__ == "__main__":
         if not src_csv.exists():
             logging.error(f"CSV not found: {src_csv}")
             sys.exit(2)
-        # Try to infer a common root for relative pathing
         inferred_root = args.input_root.resolve() if args.input_root else None
         plans = plan_from_csv(src_csv, args.out_root.resolve(), inferred_root)
     else:
@@ -324,14 +337,32 @@ if __name__ == "__main__":
             sys.exit(2)
         plans = plan_from_walk(root, args.out_root.resolve())
 
-    # Prepare actions CSV path
     actions_csv = Path.cwd() / f"VAL1S_03_actions_{RUN_TS}.csv"
+    write_actions_csv(actions_csv, plans)
 
-    if not args.execute:
-        write_actions_csv(actions_csv, plans)
-        elapsed = time.perf_counter() - t0
-        print(f"[VAL1S] Plan written: {actions_csv}")
-        print(f"[VAL1S] Planned {len(plans)} actions in {elapsed:.2f}s.")
+    # Small summary
+    total = len(plans)
+    v = sum(1 for p in plans if p.get("media_class") == "video")
+    a = sum(1 for p in plans if p.get("media_class") == "audio")
+    i = sum(1 for p in plans if p.get("media_class") == "image")
+    elapsed = time.perf_counter() - t0
+    print(f"[VAL1S] Plan written: {actions_csv}")
+    print(f"[VAL1S] Planned {total} actions (video={v}, audio={a}, image={i}) in {elapsed:.2f}s.")
+
+    # Exit conditions
+    if args.plan_only:
+        sys.exit(0)
+
+    # Legacy behavior: --execute means run without prompting
+    auto_run = args.execute or args.yes
+
+    # Prompt if interactive and not auto-run
+    if not auto_run and sys.stdin.isatty():
+        reply = input("Proceed with execution now? [y/N] ").strip().lower()
+        auto_run = reply in ("y", "yes")
+
+    if not auto_run:
+        print("[VAL1S] Skipping execution (use --yes or --execute to run automatically).")
         sys.exit(0)
 
     # Execute
@@ -343,14 +374,11 @@ if __name__ == "__main__":
             results.append(fut.result())
 
     write_actions_csv(actions_csv, results)
-
     ok = sum(1 for r in results if r["status"] == "ok")
     err = sum(1 for r in results if r["status"] == "error")
     skp = sum(1 for r in results if r["status"] == "skipped")
     elapsed = time.perf_counter() - t0
-
     print(f"[VAL1S] Executed {len(results)} actions: {ok} ok, {err} errors, {skp} skipped.")
     print(f"[VAL1S] Logs: {log_dir}")
-    print(f"[VAL1S] Actions CSV: {actions_csv}")
     print(f"[VAL1S] Output root: {args.out_root}")
     print(f"[VAL1S] Module 03 complete in {elapsed:.2f}s.")
