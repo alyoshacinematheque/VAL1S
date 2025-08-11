@@ -172,11 +172,11 @@ def plan_for_row(row: Dict[str, str], out_root: Path, root_in: Optional[Path]) -
         return [], {"status": "skipped", "message": "no path in row"}
     src = Path(src_str)
     media_class = classify_from_csv_row(row)
-    if media_class not in {"video","audio","image"}:
+    if media_class not in {"video", "audio", "image"}:
         return [], {"status": "skipped", "message": f"unsupported class {media_class}"}
 
-    # Skip DPX images entirely
-    if media_class == "image" and src.suffix.lower() == ".dpx":
+    # Skip DPX images entirely (case-insensitive, independent of media_class)
+    if src.suffix.lower() == ".dpx":
         return [], {"status": "skipped", "message": "skipping DPX"}
 
     out_path = target_path(out_root, src, root_in or src.parent, media_class)
