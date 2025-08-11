@@ -365,18 +365,41 @@ if __name__ == "__main__":
         print("[VAL1S] Skipping execution (use --yes or --execute to run automatically).")
         sys.exit(0)
 
-    # Execute
+      # Execute
     log_dir = Path.cwd() / f"VAL1S_03_logs_{RUN_TS}"
+    total = len(plans)
     results: List[Dict[str, Any]] = []
+    done = ok = err = skp = 0
+    is_tty = sys.stdout.isatty()
+
+    def _print_progress(latest: Dict[str, Any]):
+        nonlocal done, ok, err, skp
+        line = f"[{done}/{total}] ok:{ok} err:{err} skip:{skp}  {Path(latest.get('path_in','')).name}"
+        if is_tty:
+            print("\r" + line + " " * 20, end="", flush=True)
+        else:
+            print(line, flush=True)
+
+    print(f"[VAL1S] Executing {total} actions with {max(1, args.jobs)} job(s)…")
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
         futs = [ex.submit(run_ffmpeg, dict(p), log_dir, args.force) for p in plans]
         for fut in as_completed(futs):
-            results.append(fut.result())
+            rec = fut.result()
+            results.append(rec)
+            done += 1
+            st = rec.get("status")
+            if st == "ok":
+                ok += 1
+            elif st == "error":
+                err += 1
+            elif st == "skipped":
+                skp += 1
+            _print_progress(rec)
+
+    if is_tty:
+        print()  # newline after the carriage-return line
 
     write_actions_csv(actions_csv, results)
-    ok = sum(1 for r in results if r["status"] == "ok")
-    err = sum(1 for r in results if r["status"] == "error")
-    skp = sum(1 for r in results if r["status"] == "skipped")
     elapsed = time.perf_counter() - t0
     print(f"[VAL1S] Executed {len(results)} actions: {ok} ok, {err} errors, {skp} skipped.")
     print(f"[VAL1S] Logs: {log_dir}")
