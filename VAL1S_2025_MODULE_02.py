@@ -32,6 +32,7 @@ CSV_COLUMNS = [
     "height",
     "frame_rate",
     "scan_type",            # Progressive/Interlaced/Unknown
+    "scan_order",
     "pixel_format",         # e.g., YUV 4:2:2 10-bit if derivable (best-effort)
     "chroma_subsampling",
     "bit_depth",
@@ -131,6 +132,7 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
         "height": None,
         "frame_rate": None,
         "scan_type": None,
+        "scan_order": None,   # <-- new field
         "pixel_format": None,
         "chroma_subsampling": None,
         "bit_depth": None,
@@ -158,18 +160,12 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
     # General/container info
     gen = next((t for t in mi.tracks if t.track_type == "General"), None)
     if gen:
-        # e.g., 'MPEG-4', 'Matroska'
         container = _norm(getattr(gen, "format", None)) or _norm(getattr(gen, "internet_media_type", None))
         if container:
-            # Normalize common container names
-            container = container.replace("matroska", "mkv").replace("mpeg-4", "mp4")
-            container = container.replace("quicktime", "mov")
-        # Fall back to extension when MediaInfo is vague
+            container = container.replace("matroska", "mkv").replace("mpeg-4", "mp4").replace("quicktime", "mov")
         if not container:
             container = path.suffix.lower().lstrip(".") or None
         meta["container"] = container
-
-        # Duration (ms)
         dur = getattr(gen, "duration", None)
         try:
             meta["duration_ms"] = int(float(dur)) if dur is not None else None
@@ -183,14 +179,11 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
         if vc:
             vc = vc.replace("mpeg-4 visual", "mpeg-4 visual").replace("h.264", "h264").replace("h.265", "h265")
         meta["video_codec"] = vc
-
         try:
             meta["width"]  = int(getattr(v, "width", None)) if getattr(v, "width", None) else None
             meta["height"] = int(getattr(v, "height", None)) if getattr(v, "height", None) else None
         except Exception:
             pass
-
-        # Frame rate may be "23.976 (24000/1001)"
         fr = getattr(v, "frame_rate", None)
         if isinstance(fr, str):
             parts = fr.split()
@@ -200,27 +193,21 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
                 meta["frame_rate"] = None
         elif isinstance(fr, (int, float)):
             meta["frame_rate"] = float(fr)
-
-        scan = getattr(v, "scan_type", None) or getattr(v, "scan_type_store_method", None)
-        meta["scan_type"] = scan if scan else None
-
+        meta["scan_type"] = getattr(v, "scan_type", None) or getattr(v, "scan_type_store_method", None)
+        meta["scan_order"] = getattr(v, "scan_order", None) or None  # <-- capture scan_order here
         meta["chroma_subsampling"] = getattr(v, "chroma_subsampling", None) or None
         bd = getattr(v, "bit_depth", None)
         try:
             meta["bit_depth"] = int(bd) if bd is not None else None
         except Exception:
             meta["bit_depth"] = None
-
-        # Pixel format (best-effort from chroma + bit depth)
         if meta["chroma_subsampling"] and meta["bit_depth"]:
             meta["pixel_format"] = f"{meta['chroma_subsampling']} {meta['bit_depth']}-bit"
 
-    # Audio (first track)
+    # Audio
     a = next((t for t in mi.tracks if t.track_type == "Audio"), None)
     if a:
         ac = _norm(getattr(a, "format", None)) or _norm(getattr(a, "codec_id", None))
-        if ac:
-            ac = ac.replace("pcm", "pcm")
         meta["audio_codec"] = ac
         sr = getattr(a, "sampling_rate", None)
         try:
@@ -233,7 +220,7 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
         except Exception:
             meta["audio_channels"] = None
 
-    # Image specifics (if still image)
+    # Image
     if media_class == "image":
         img = next((t for t in mi.tracks if t.track_type == "Image"), None)
         if img:
@@ -248,7 +235,6 @@ def extract_metadata(path: Path) -> Dict[str, Any]:
             except Exception:
                 pass
 
-    # Final fallbacks
     if not meta["container"]:
         meta["container"] = path.suffix.lower().lstrip(".") or None
 
