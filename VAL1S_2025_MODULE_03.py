@@ -37,6 +37,12 @@ def target_path(out_root: Path, src: Path, root_in: Path, media_class: str) -> P
         return out_root / Path(rel).with_suffix(".tiff")
     return out_root / Path(rel)
 
+IGNORE_EXTS = {
+    ".xml",".json",".csv",".xmp",".ale",".edl",
+    ".srt",".ass",".vtt",".m3u",".md",".nfo",
+    ".pdf",".cue",".sfv"
+}
+
 RUN_TS = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
@@ -170,10 +176,18 @@ def plan_for_row(row: Dict[str, str], out_root: Path, root_in: Optional[Path]) -
     src_str = row.get("path") or row.get("File Path") or ""
     if not src_str:
         return [], {"status": "skipped", "message": "no path in row"}
+    
     src = Path(src_str)
+
+    # Skip obvious non-media sidecars
+    if src.suffix.lower() in IGNORE_EXTS:
+        return [], {"status": "skipped", "message": "sidecar/non-media"}    
+
     media_class = classify_from_csv_row(row)
     if media_class not in {"video", "audio", "image"}:
         return [], {"status": "skipped", "message": f"unsupported class {media_class}"}
+
+    # Continue with rest of your function...
 
     # Skip DPX images entirely (case-insensitive, independent of media_class)
     if src.suffix.lower() == ".dpx":
