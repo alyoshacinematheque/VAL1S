@@ -175,6 +175,10 @@ def plan_for_row(row: Dict[str, str], out_root: Path, root_in: Optional[Path]) -
     if media_class not in {"video","audio","image"}:
         return [], {"status": "skipped", "message": f"unsupported class {media_class}"}
 
+    # Skip DPX images entirely
+    if media_class == "image" and src.suffix.lower() == ".dpx":
+        return [], {"status": "skipped", "message": "skipping DPX"}
+
     out_path = target_path(out_root, src, root_in or src.parent, media_class)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
