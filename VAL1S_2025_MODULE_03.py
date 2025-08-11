@@ -209,7 +209,7 @@ def plan_from_csv(csv_path: Path, out_root: Path, root_in: Optional[Path]) -> Li
         reader = csv.DictReader(f)
         for row in reader:
             cmd, rec = plan_for_row(row, out_root, root_in)
-            if rec:
+            if rec and rec.get("status") == "planned":
                 plans.append(rec | {"_cmd_list": cmd})
     return plans
 
@@ -230,10 +230,9 @@ def plan_from_walk(input_root: Path, out_root: Path) -> List[Dict[str, Any]]:
             mc = classify_with_mediainfo(p)
             row = {"path": str(p), "media_class": mc}
             cmd, rec = plan_for_row(row, out_root, input_root)
-            if rec:
+            if rec and rec.get("status") == "planned":
                 plans.append(rec | {"_cmd_list": cmd})
     return plans
-
 # --- Execution ---
 
 def run_ffmpeg(rec: Dict[str, Any], log_dir: Path, force: bool=False) -> Dict[str, Any]:
