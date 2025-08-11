@@ -23,6 +23,20 @@ try:
 except Exception:
     MediaInfo = None  # only needed when walking without CSV
 
+def target_path(out_root: Path, src: Path, root_in: Path, media_class: str) -> Path:
+    """Output path under out_root, preserving relative structure and using the right extension."""
+    try:
+        rel = src.relative_to(root_in)
+    except ValueError:
+        rel = src.name  # fall back to just the filename
+    if media_class == "video":
+        return out_root / Path(rel).with_suffix(".mkv")
+    if media_class == "audio":
+        return out_root / Path(rel).with_suffix(".wav")
+    if media_class == "image":
+        return out_root / Path(rel).with_suffix(".tiff")
+    return out_root / Path(rel)
+
 RUN_TS = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
