@@ -144,15 +144,13 @@ def build_image_cmd(src: Path, dst: Path) -> List[str]:
 
 # --- Planning ---
 
-def target_path(out_root: Path, src: Path, root_in: Path, media_class: str) -> Path:
-    rel = src.relative_to(root_in) if src.is_relative_to(root_in) else Path(src.name)
-    if media_class == "video":
-        return out_root / rel.with_suffix(".mkv")
-    if media_class == "audio":
-        return out_root / rel.with_suffix(".wav")
-    if media_class == "image":
-        return out_root / rel.with_suffix(".tiff")
-    return out_root / rel
+def row_is_interlaced(row: dict) -> bool:
+    """Detect interlace from Module 02 CSV fields."""
+    val = " ".join([
+        (row.get("scan_type") or ""),
+        (row.get("scan_order") or ""),
+    ]).lower()
+    return any(tok in val for tok in ("interl", "tff", "bff", "mbaff", "paff", "mixed"))
 
 def plan_for_row(row: Dict[str, str], out_root: Path, root_in: Optional[Path]) -> Tuple[List[str], Dict[str, Any]]:
     src_str = row.get("path") or row.get("File Path") or ""
@@ -162,19 +160,18 @@ def plan_for_row(row: Dict[str, str], out_root: Path, root_in: Optional[Path]) -
     media_class = classify_from_csv_row(row)
     if media_class not in {"video","audio","image"}:
         return [], {"status": "skipped", "message": f"unsupported class {media_class}"}
+
     out_path = target_path(out_root, src, root_in or src.parent, media_class)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Optional hint from Module 02
-    scan_type = row.get("scan_type") or row.get("scan_type_store_method") or ""
-
     if media_class == "video":
-        cmd = build_video_cmd(src, out_path, interlaced_hint=scan_type)
+        interlace_hint = "interlaced" if row_is_interlaced(row) else ""
+        cmd = build_video_cmd(src, out_path, interlaced_hint=interlace_hint)
         action = "transcode_video_ffv1_mkv"
     elif media_class == "audio":
         cmd = build_audio_cmd(src, out_path)
         action = "normalize_audio_pcm96k24_wav"
-    else:  # image
+    else:
         cmd = build_image_cmd(src, out_path)
         action = "normalize_image_tiff"
 
