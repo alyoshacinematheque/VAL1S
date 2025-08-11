@@ -373,7 +373,6 @@ if __name__ == "__main__":
     is_tty = sys.stdout.isatty()
 
     def _print_progress(latest: Dict[str, Any]):
-        nonlocal done, ok, err, skp
         line = f"[{done}/{total}] ok:{ok} err:{err} skip:{skp}  {Path(latest.get('path_in','')).name}"
         if is_tty:
             print("\r" + line + " " * 20, end="", flush=True)
